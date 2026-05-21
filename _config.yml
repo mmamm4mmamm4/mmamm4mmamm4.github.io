@@ -14,9 +14,9 @@ timezone: Asia/Seoul
 # jekyll-seo-tag settings › https://github.com/jekyll/jekyll-seo-tag/blob/master/docs/usage.md
 # ↓ --------------------------
 
-title: exploit dev blog # the main title
+title: exploit dev, malware analysis blog # the main title
 
-tagline: 0-day, CVE analysis, pwn # it will display as the subtitle
+tagline: 0-day, CVE analysis, pwn, malware analysis # it will display as the subtitle
 
 description: >- # used by seo meta and the atom feed
   Exploit development, vulnerability research,
