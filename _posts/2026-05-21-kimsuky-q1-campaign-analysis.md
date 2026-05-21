@@ -42,13 +42,14 @@ author: mmamm4
 
 **기술적 특징 비교**
 
-| 구분           | **Campaign #1**                                     | **Campaign #2**                    | **Campaign #3**         | **Campaign #4**                                            |
-| ------------ | --------------------------------------------------- | ---------------------------------- | ----------------------- | ---------------------------------------------------------- |
-| **주요 페이로드**  | PowerShell RAT (a.ps1)                              | PowerShell Infostealer (bpvme.ps1) | VBE → PowerShell (파일리스) | DLL 정찰 모듈 / VSCode CLI                                     |
-| **C2 채널**    | 자체 서버 (hxxps://nelark[.]icu) | GitHub 저장소 (정상 서비스 악용)          | 자체 IP (103.67.196[.]25)   | 정상 서버 악용(yespp[.]co[.]kr) + GitHub OAuth |
-| **지속성 기법**   | Startup 폴더 LNK + 작업 스케줄러 (5분 주기)                 | 작업 스케줄러 (OneDrive 위장, 60분 주기)      | 작업 스케줄러 (15분 주기)     | VSCode 터널 (지속 원격 접속)                                       |
-| **방어 우회**    | UAC 비활성화, Defender 예외 등록                            | 자가 삭제, 수집 파일 삭제                    | 다중 난독화 (동물명 변수)         | 정상 MS CDN 활용                                               |
-| **타깃 식별 방식** | uid 기반 폴링                                           | IP-시간 기반 파일명                       | MAC 주소 기반 맞춤 페이로드       | (정찰 정보 일괄 수집)                                              |
+| 구분 | **Campaign #1** | **Campaign #2** | **Campaign #3** | **Campaign #4** |
+| --- | --- | --- | --- | --- |
+| **주요 페이로드** | PowerShell RAT (a.ps1) | PowerShell Infostealer (bpvme.ps1) | VBE → PowerShell (파일리스) | DLL 정찰 모듈 / VSCode CLI |
+| **C2 채널** | 자체 서버 (hxxps://nelark\[.\]icu) | GitHub 저장소 (정상 서비스 악용) | 자체 IP (103.67.196\[.\]25) | 정상 서버 악용(yespp\[.\]co\[.\]kr) + GitHub OAuth |
+| **지속성 기법** | Startup 폴더 LNK + 작업 스케줄러 (5분 주기) | 작업 스케줄러 (OneDrive 위장, 60분 주기) | 작업 스케줄러 (15분 주기) | VSCode 터널 (지속 원격 접속) |
+| **방어 우회** | UAC 비활성화, Defender 예외 등록 | 자가 삭제, 수집 파일 삭제 | 다중 난독화 (동물명 변수) | 정상 MS CDN 활용 |
+| **타깃 식별 방식** | uid 기반 폴링 | IP-시간 기반 파일명 | MAC 주소 기반 맞춤 페이로드 | (정찰 정보 일괄 수집) |
+
 ## 2. 캠페인 분석
 
 #### Campaign #1
