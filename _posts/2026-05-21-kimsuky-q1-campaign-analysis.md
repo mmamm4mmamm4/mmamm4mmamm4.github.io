@@ -192,9 +192,7 @@ plain[i] = encrypted[i]
 | 4단계 | PowerShell | 다중 난독화 해제 후 `(New-Object Net.WebClient).DownloadString()` 조립 | 동물명 변수(`$tiger`, `$bear`, `$puma`)로 난독화 |
 | 5단계 | `getmac` | 시스템 MAC 주소 수집 | 피해자 고유 식별자 생성 |
 | 6단계 | C2 요청 | `hxxp://103.67.196[.]25/view1.php?type=apple&seed=<MAC>` 페이로드 요청 | MAC 기반 맞춤 페이로드 요청 |
-| 7단계 | `iex` (2회) | 1차 `iex` — 원격 스크립트 요청, 
-2차 `iex` — 파일리스(Fileless) 실행 | 지속성 유지 후
-원격 명령어 수행 |
+| 7단계 | `iex` (2회) | 1차 `iex` — 원격 스크립트 요청, 2차 `iex` — 파일리스(Fileless) 실행 | 지속성 유지 후 원격 명령어 수행 |
 
 #### Campaign #4
 
