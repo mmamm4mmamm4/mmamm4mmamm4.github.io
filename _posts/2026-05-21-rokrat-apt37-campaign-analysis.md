@@ -1,8 +1,10 @@
 ---
 title: "APT37 RokRAT 다단계 백도어 캠페인 종합 분석 보고서"
-date: 2026-05-21 12:00:00 +0900
-categories: [Malware Analysis]
+date: 2026-05-21 00:00:00 +0900
+categories:
+- Malware Analysis
 tags: [APT37, RokRAT, DPRK, HWP, DLL-sideloading, dead-drop-c2, malware-analysis]
+author: mmamm4
 ---
 # APT37 RokRAT 다단계 백도어 캠페인 종합 분석 보고서
 
