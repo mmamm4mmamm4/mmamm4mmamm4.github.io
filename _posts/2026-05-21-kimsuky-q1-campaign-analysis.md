@@ -92,7 +92,7 @@ Upon execution, the LNK file extracts the decoy PDF and presents it to the victi
 | 4 | /xftaswx/res/index.php | UAC check result reporting | POST (uid, msg) |
 | 5 | /xftaswx/res/post_proc.php?fpath=scheduler-once | Task Scheduler registration | scheduler-once.bat |
 | 6 | /xftaswx/res/post_proc.php?fpath=a.ps1 | Main RAT loop | a.ps1 (including gCommand) |
-| 7 | /xftaswx/res/get-command.php?uid=<uid> | Remote command reception | Dynamic command execution |
+| 7 | /xftaswx/res/get-command.php?uid={uid} | Remote command reception | Dynamic command execution |
 
 #### Campaign #2
 
@@ -191,7 +191,7 @@ plain[i] = encrypted[i]
 | Stage 3 | `ant.vbe` | Executes VBScript Encoded file, invokes PowerShell via WMI | Background execution |
 | Stage 4 | PowerShell | Strips multi-layer obfuscation and assembles `(New-Object Net.WebClient).DownloadString()` call | Obfuscated with animal-name variables (`$tiger`, `$bear`, `$puma`) |
 | Stage 5 | `getmac` | Collects system MAC address | Generates a victim-unique identifier |
-| Stage 6 | C2 request | Requests payload at `hxxp://103.67.196\[.\]25/view1.php?type=apple&seed=<MAC>` | MAC address-based custom payload delivery |
+| Stage 6 | C2 request | Requests payload at `hxxp://103.67.196\[.\]25/view1.php?type=apple&seed={MAC}` | MAC address-based custom payload delivery |
 | Stage 7 | `iex` (×2) | First `iex` — fetches remote script; Second `iex` — fileless execution | Maintains persistence then executes remote commands |
 
 #### Campaign #4
@@ -303,7 +303,7 @@ cbb059bd691d846e8279d617134d3129  conf.dat
 **C2**
 hxxp://103.67.196\[.\]25/conf.dat
 hxxp://103.67.196\[.\]25/payload.dat
-hxxp://103.67.196\[.\]25/view1.php?type=apple&seed=<Mac>
+hxxp://103.67.196\[.\]25/view1.php?type=apple&seed={Mac}
 
 **Campaign #4**
 **MD5**
@@ -536,7 +536,7 @@ hxxps://www.yespp\[.\]co\[.\]kr/common/include/code/out.php
 </tr>
 <tr>
 <td>7</td>
-<td>/xftaswx/res/get-command.php?uid=<uid></td>
+<td>/xftaswx/res/get-command.php?uid={uid}</td>
 <td>원격 명령 수신</td>
 <td>동적 명령 실행</td>
 </tr>
@@ -706,7 +706,7 @@ hxxps://www.yespp\[.\]co\[.\]kr/common/include/code/out.php
 <tr>
 <td>6단계</td>
 <td>C2 요청</td>
-<td><code>hxxp://103.67.196[.]25/view1.php?type=apple&amp;seed=&lt;MAC&gt;</code></td>
+<td><code>hxxp://103.67.196[.]25/view1.php?type=apple&amp;seed={MAC}</code></td>
 <td>MAC 기반 맞춤 페이로드 요청</td>
 </tr>
 <tr>
