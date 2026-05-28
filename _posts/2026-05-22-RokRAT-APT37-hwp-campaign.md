@@ -31,7 +31,7 @@ The combination of technical sophistication — HWP OLE exploitation with hyperl
 
 ## Detailed Analysis
 
-#### Stage 1 — 북한 노동당 창건 80주년 행사 동향 종합.hwp (OLE Exploitation)
+#### Stage 1 — 북한 노동당 창건 80주년 행사 동향 종합.hwp (OLE Misuse)
 
 When the HWP document is opened, three files are dropped into `%TEMP%`. Note that `vhelp.exe` and `Volumeid1.exe` are identical files.
 
@@ -143,15 +143,15 @@ v7();   // direct call → Stage 4 entry
 
 #### Stage 4 — PIC Shellcode
 
-| Function | Role |
-| --- | --- |
-| `sub_50` | API hash resolver |
-| `sub_33C` | Reflective PE loader main |
-| `sub_244` | PE DOS/NT header parser |
-| `sub_2DC` | DataDirectory access helper |
-| `sub_15C` | Stage 5 decode (XOR) + loader call |
-| `sub_69C` | TLS callback invocation |
-| `sub_738` / `sub_73F` | Self-location trick (`mov rax, [rsp]; ret`) |
+| Function              | Role                                                      |
+| --------------------- | --------------------------------------------------------- |
+| `sub_50`              | API hash resolver                                         |
+| `sub_33C`             | Reflective PE loader main                                 |
+| `sub_244`             | PE DOS/NT header parser                                   |
+| `sub_2DC`             | DataDirectory access helper                               |
+| `sub_15C`             | Stage 5 decode (XOR) + loader call                        |
+| `sub_69C`             | x64 SEH                                                   |
+| `sub_738` / `sub_73F` | Self-location trick (`mov rax, [rsp]; ret + add rax 0ch`) |
 
 **API hash resolver (`sub_50`)**
 
@@ -188,7 +188,7 @@ char* enc  = a1 + 5;          // start of encrypted PE
 for (i = 0; i < size; i++) enc[i] ^= key;   // XOR 0x29 decode
 
 if (sub_33C(enc, size, &mapped) == 0)
-    sub_69C(&mapped);         // TLS callbacks
+    sub_69C(&mapped);         // x64 SEH
 ```
 
 **Self-location trick**: `sub_73F` returns its own return address via `mov rax, [rsp]; ret`; `sub_738` adds 12 to derive the start address of the Stage 5 data block. This is a standard PIC shellcode technique.
@@ -687,11 +687,11 @@ v7();   // 직접 호출 → stage 4 진입
 </tr>
 <tr>
 <td><code>sub_69C</code></td>
-<td>TLS 콜백 호출</td>
+<td>x64 SEH</td>
 </tr>
 <tr>
 <td><code>sub_738</code> / <code>sub_73F</code></td>
-<td>자기 위치 획득 트릭 (<code>mov rax, [rsp]; ret</code>)</td>
+<td>자기 위치 획득 트릭 (<code>mov rax, [rsp]; ret + add rax 0ch</code>)</td>
 </tr>
 </tbody>
 </table>
@@ -750,7 +750,7 @@ char* enc  = a1 + 5;          // 암호화된 PE 시작
 for (i = 0; i &lt; size; i++) enc[i] ^= key;   // XOR 0x29 디코드
 
 if (sub_33C(enc, size, &amp;mapped) == 0)
-    sub_69C(&amp;mapped);         // TLS 콜백 호출
+    sub_69C(&amp;mapped);         // x64 SEH
 </code></pre>
 
 <p><strong>자기 위치 획득 트릭</strong>: <code>sub_73F</code>가 <code>mov rax, [rsp]; ret</code>로 자신의 return address를 반환 → <code>sub_738</code>이 <code>add rax, 12</code>로 stage 5 데이터 시작 주소를 만듭니다. PIC shellcode의 표준 기법.</p>
