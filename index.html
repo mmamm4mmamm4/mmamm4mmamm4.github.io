@@ -10,20 +10,22 @@ layout: default
 
 <style>
   #landing-hero {
-    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
-    height: calc(100vh - 5.5rem);
-    min-height: 420px;
+    min-height: calc(100vh - 6rem);
+    background: #04050f;
     border-radius: 12px;
     overflow: hidden;
-    background: #04050f;
   }
   #landing-hero img {
     width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: center;
+    height: auto;
+    max-height: calc(100vh - 6rem);
+    object-fit: contain;
     display: block;
+    border-radius: 12px;
     opacity: 0;
     transition: opacity 0.6s ease;
   }
