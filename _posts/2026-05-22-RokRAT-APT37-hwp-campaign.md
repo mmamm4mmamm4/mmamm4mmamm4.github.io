@@ -2,7 +2,7 @@
 title: APT37 RokRAT Multi-Stage Backdoor Campaign Analysis
 date: 2026-05-22 00:00:00 +0900
 categories:
-- Research Notes
+- Malware Analysis
 tags: []
 author: mmamm4
 ---

@@ -2,7 +2,7 @@
 title: Chinese PlugX Attack Campaign Analysis — Q1 2026
 date: 2026-06-01 00:00:00 +0900
 categories:
-- Research Notes
+- Malware Analysis
 tags: []
 author: mmamm4
 ---

@@ -3,7 +3,6 @@ title: 'Exploit Dev Series 3 — 64-bit ROP: Calling Convention and Gadget Chain
 date: 2026-05-28 00:00:00 +0900
 categories:
 - Exploit Dev
-- Exploitation
 tags:
 - rop
 - exploit-dev

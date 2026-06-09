@@ -3,7 +3,6 @@ title: 'CTF — picoCTF: buffer overflow 1'
 date: 2026-06-04 22:13:00 +0900
 categories:
 - CTF
-- Writeup
 tags:
 - ctf
 - pwn
