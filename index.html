@@ -33,7 +33,9 @@ layout: default
 </style>
 
 <div id="landing-hero">
-  <img id="landing-img" alt="Research Cosmos — exploit dev, malware analysis, ML">
+  <img id="landing-img"
+       src="{{ '/assets/img/landing/home/cosmos-nasa.jpg' | relative_url }}"
+       alt="Research Cosmos — exploit dev, malware analysis, ML">
 </div>
 
 <script>
@@ -43,7 +45,10 @@ layout: default
       {{ '/assets/img/landing/home/cosmos-gargantua.jpg' | relative_url | jsonify }}
     ];
     var el = document.getElementById('landing-img');
-    el.addEventListener('load', function () { el.classList.add('loaded'); });
-    el.src = imgs[Math.floor(Math.random() * imgs.length)];
+    function show() { el.classList.add('loaded'); }
+    el.addEventListener('load', show);
+    var pick = imgs[Math.floor(Math.random() * imgs.length)];
+    if (pick !== el.getAttribute('src')) { el.src = pick; }
+    if (el.complete) show();
   })();
 </script>
