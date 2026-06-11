@@ -1,6 +1,6 @@
 ---
 layout: default
-# Full-screen landing: shows one of two cosmos images at random on each visit.
+# Full-screen landing: shows one of two black hole images at random on each visit.
 # To restore the default post list, replace this file with:
 #   ---
 #   layout: home
@@ -15,7 +15,7 @@ layout: default
     justify-content: center;
     width: 100%;
     min-height: calc(100vh - 6rem);
-    background: #04050f;
+    background: var(--main-bg);
     border-radius: 12px;
     overflow: hidden;
   }
@@ -43,8 +43,8 @@ layout: default
 <script>
   (function () {
     var imgs = [
-      {{ '/assets/img/landing/home/blackho.png'   | relative_url | jsonify }},
-      {{ '/assets/img/landing/home/blackhole.jpg' | relative_url | jsonify }}
+      {{ '/assets/img/landing/home/blackho.png'    | relative_url | jsonify }},
+      {{ '/assets/img/landing/home/black_hole.png' | relative_url | jsonify }}
     ];
     var el = document.getElementById('landing-img');
     function show() { el.classList.add('loaded'); }
