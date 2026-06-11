@@ -36,15 +36,15 @@ layout: default
 
 <div id="landing-hero">
   <img id="landing-img"
-       src="{{ '/assets/img/landing/home/cosmos-nasa.jpg' | relative_url }}"
+       src="{{ '/assets/img/landing/home/blackho.png' | relative_url }}"
        alt="Research Cosmos — exploit dev, malware analysis, ML">
 </div>
 
 <script>
   (function () {
     var imgs = [
-      {{ '/assets/img/landing/home/cosmos-nasa.jpg'      | relative_url | jsonify }},
-      {{ '/assets/img/landing/home/cosmos-gargantua.jpg' | relative_url | jsonify }}
+      {{ '/assets/img/landing/home/blackho.png'   | relative_url | jsonify }},
+      {{ '/assets/img/landing/home/blackhole.jpg' | relative_url | jsonify }}
     ];
     var el = document.getElementById('landing-img');
     function show() { el.classList.add('loaded'); }
