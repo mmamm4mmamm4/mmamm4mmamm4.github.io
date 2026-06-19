@@ -183,6 +183,6 @@ screen 취약점이 없더라도 이 경로가 성립한다면 동일하게 root
 ---
 
 **미해결 항목**:
-- AWS 키(`AKIAIOSFODNN7H3UZCB44T`) 유효성 및 IAM 권한 — `aws sts get-caller-identity` 미실행
+- AWS 키(`AKIA****************UZCB44T`) 유효성 및 IAM 권한 — `aws sts get-caller-identity` 미실행
 - sudo vim NOPASSWD — `sudo -l` 독립 실행 미완료
 - 172.31.139.223 — 네트워크 경로 확보 시 재시도 필요
