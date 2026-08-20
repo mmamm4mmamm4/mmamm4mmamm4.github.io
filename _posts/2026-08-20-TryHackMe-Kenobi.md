@@ -83,7 +83,7 @@ ssh -i ~/mma/id_rsa kenobi@10.49.185.92
 kenobi@kenobi:~$ id
 uid=1000(kenobi) gid=1000(kenobi) groups=1000(kenobi),4(adm),24(cdrom),27(sudo),30(dip),46(plugdev),110(lxd),113(lpadmin),114(sambashare)
 kenobi@kenobi:~$ cat user.txt
-d0b0f3f53b6caa532a83915e19224899
+<user flag redacted>
 ```
 
 접속 형식은 `ssh -i <키파일> kenobi@<IP>`입니다. 훔친 키를 기본 경로(`~/.ssh`)가 아닌 곳에 뒀으니 `-i`로 그 위치를 짚어 줘야 했고, 처음 몇 번은 이 옵션을 빼거나 사용자·호스트를 뒤섞어 거부당했습니다.
@@ -142,7 +142,7 @@ export PATH=/tmp:$PATH
 root@kenobi:/tmp# id
 uid=0(root) gid=1000(kenobi) groups=1000(kenobi),4(adm),24(cdrom),27(sudo),...
 root@kenobi:/root# cat root.txt
-177b3cd8562289f37382721c28381f02
+<root flag redacted>
 ```
 
 ## 정리
