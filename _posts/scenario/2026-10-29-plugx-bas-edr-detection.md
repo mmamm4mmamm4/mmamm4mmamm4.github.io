@@ -59,12 +59,12 @@ EDR 위협 이벤트는 14건이었고, 내용이 비어 있는 2건을 빼면 1
 
 | 룰 | 내용 | 시나리오 | 티켓 | 중복 설정 |
 |----|------|----------|------|-----------|
-| R1 | 위험 위치에서 실행된 프로세스가 같은 폴더의 DLL 로드 | 실시간 | 발행(상) | `$hostname$::$pguid$::$file_path$`, 이벤트 제거 300초 |
-| R2 | 서비스 ImagePath의 실행 파일이 위험 위치 | 실시간 | 발행(상) | `$hostname$::$reg_key_path$::$reg_value$`, 이벤트 제거 300초 |
-| R3 | Public·PerfLogs 하위 또는 ProgramData 루트에서 EXE 실행 | 실시간 | 미발행(조사용) | `$hostname$::$pguid$`, 이벤트 제거 300초 |
-| R4 | `-EncodedCommand`(base64 20자 이상)와 `-ExecutionPolicy Bypass`를 함께 쓴 PowerShell | 실시간 | 미발행(조사용) | `$hostname$::$pguid$`, 이벤트 제거 300초 |
-| R5 | 같은 계정·단말 10분 안에 정찰 도구 3종 이상 | 배치(5분마다, 10분) | 발행(중) | `$hostname$::$user_key$`, 티켓 축약 3600초 |
-| R6 | 30분 안에 사이드로딩 또는 서비스 등록 + 의심 단계 합계 3개 이상 | 배치(10분마다, 30분) | 발행(상, 탐지 후 즉시 조사) | `$hostname$`, 이벤트 제거 0초, 티켓 축약 3600초 |
+| R1 | 위험 위치에서 실행된 프로세스가 같은 폴더의 DLL 로드 | 실시간 | 발행(상) | `$hostname::$pguid`, 이벤트 제거 300초 |
+| R2 | 서비스 ImagePath의 실행 파일이 위험 위치 | 실시간 | 발행(상) | `$hostname::$reg_key_path::$reg_value`, 이벤트 제거 300초 |
+| R3 | Public·PerfLogs 하위 또는 ProgramData 루트에서 EXE 실행 | 실시간 | 미발행(조사용) | `$hostname::$pguid`, 이벤트 제거 300초 |
+| R4 | `-EncodedCommand`(base64 20자 이상)와 `-ExecutionPolicy Bypass`를 함께 쓴 PowerShell | 실시간 | 미발행(조사용) | `$hostname::$pguid`, 이벤트 제거 300초 |
+| R5 | 같은 단말(IP) 10분 안에 정찰 도구 3종 이상 | 배치(5분마다, 10분) | 발행(중) | `$hostname::$host_ip`, 티켓 축약 3600초 |
+| R6 | 30분 안에 사이드로딩 또는 서비스 등록 + 의심 단계 합계 3개 이상 | 배치(10분마다, 30분) | 발행(상, 탐지 후 즉시 조사) | `$hostname::$host_ip`, 이벤트 제거 0초, 티켓 축약 3600초 |
 
 R4는 base64가 20자 미만인 짧은 인코딩 명령과 `Bypass` 없이 쓴 인코딩 명령을 놓칩니다. 정규식은 base64 모양만 확인하며, 실제로 UTF-16LE로 디코딩되는지는 확인하지 않습니다. R2는 따옴표 경로를 먼저 뽑고, 따옴표가 없으면 처음 나오는 `.exe`까지를 실행 파일로 봅니다. 그래서 환경변수(`%ProgramData%`)나 NT 경로 표기, 중간 폴더 이름에 `.exe `가 들어간 경로는 따로 정규화해야 합니다.
 
@@ -132,22 +132,21 @@ table duration=1d EDR_GENIAN
 # b64 는 UTF-16LE base64 입니다. 분석 PC(CyberChef 등)에서 디코딩해 내용만 확인하고 절대 실행하지 않습니다.
 ```
 
-### R5 10분 내 같은 사용자·단말의 정찰 도구 3종 이상 (배치: */5 * * * *, 분석기간 600초, 중요도 중)
+### R5 10분 내 같은 단말의 정찰 도구 3종 이상 (배치: */5 * * * *, 분석기간 600초, 중요도 중)
 
 ```
-# 계정이 비어 있는 이벤트는 제외합니다(서로 다른 주체가 한 그룹으로 합쳐지는 것을 막기 위함, 그만큼 범위가 줄어듭니다).
+# 계정이 아니라 단말(hostname·host_ip)로 묶습니다. EDR이 whoami 같은 짧은 프로세스의 계정을 비워 보내는 경우가 있어, 계정은 집계 조건이 아니라 결과의 user_key 목록으로만 남깁니다(빈 계정은 목록에서 빠짐).
 table from=$("from") to=$("to") EDR_GENIAN
 | search _schema == "genian-edr-process" and event_subtype == "ProcessStart"
 | eval tool = lower(image)
 | search in(tool, "whoami.exe", "ipconfig.exe", "systeminfo.exe", "net.exe", "nltest.exe", "tasklist.exe",
                   "quser.exe", "query.exe", "netstat.exe", "arp.exe", "route.exe", "hostname.exe")
-      and len(trim(hostname)) > 0 and len(trim(proc_user_id)) > 0
-| eval hostname = lower(hostname), user_key = lower(trim(proc_user_id)),
+      and len(trim(hostname)) > 0
+| eval hostname = lower(hostname),
+       user_key = if(len(trim(proc_user_id)) > 0, lower(trim(proc_user_id)), null),
        proc_key = if(len(trim(pguid)) > 0, concat("p:", pguid), concat("r:", _table, ":", _era, ":", _id))
-| stats min(_time) as first_seen, max(_time) as last_seen by hostname, user_key, tool, proc_key
-| stats count as exec_cnt, min(first_seen) as first_seen, max(last_seen) as last_seen by hostname, user_key, tool
-| stats count as tool_cnt, values(tool) as tools, sum(exec_cnt) as total_exec,
-        min(first_seen) as first_seen, max(last_seen) as last_seen by hostname, user_key
+| stats dc(tool) as tool_cnt, values(tool) as tools, dc(proc_key) as total_exec, values(user_key) as user_key,
+        min(_time) as first_seen, max(_time) as last_seen by hostname, host_ip
 | search tool_cnt >= 3
 ```
 
@@ -206,11 +205,11 @@ table from=$("from") to=$("to") EDR_GENIAN
              or (f_dir == "c:\\windows\\temp" and lower(file_path) == "*.txt")), "cleanup")
 | search isnotnull(stage)
 | eval stage_item = if(stage == "recon", image_l, "_")
-| stats min(_time) as first_seen, max(_time) as last_seen by hostname, user_key, stage, stage_item
-| stats count as item_cnt, min(first_seen) as first_seen, max(last_seen) as last_seen by hostname, user_key, stage
+| stats min(_time) as first_seen, max(_time) as last_seen by hostname, host_ip, user_key, stage, stage_item
+| stats count as item_cnt, min(first_seen) as first_seen, max(last_seen) as last_seen by hostname, host_ip, user_key, stage
 | search stage != "recon" or item_cnt >= 3
-| stats min(first_seen) as first_seen, max(last_seen) as last_seen by hostname, stage
-| stats count as stage_cnt, values(stage) as stages, min(first_seen) as first_seen, max(last_seen) as last_seen by hostname
+| stats min(first_seen) as first_seen, max(last_seen) as last_seen by hostname, host_ip, stage
+| stats count as stage_cnt, values(stage) as stages, min(first_seen) as first_seen, max(last_seen) as last_seen by hostname, host_ip
 | search stage_cnt >= 3 and (contains(stages, "sideload") or contains(stages, "svc_install"))
 ```
 
@@ -243,7 +242,7 @@ GPT 수정안을 다시 실측하자 새 오탐이 하나 생겼습니다. 정�
 
 R6의 단계는 서로 독립된 증거가 아닐 수 있습니다. 이번 로그에서도 같은 인코딩 PowerShell이 `enc_powershell`과 `cleanup` 두 단계를 함께 채웠고, 최종 집계는 hostname만으로 묶으므로 다른 사용자·작업의 행위가 합쳐질 수 있습니다. 같은 판정 기준이라도 파이썬 실측기는 이벤트 시각마다 창을 여는 이동 창이고, SIEM 배치는 CRON 시점마다 과거 창을 조회합니다. 따라서 경계 동작까지 같지는 않습니다.
 
-v4 룰을 SIEM에 등록했을 때 티켓은 R5에서만 발행됐고 R1·R2·R6에서는 발행되지 않았습니다(R3·R4는 설계상 미발행). 세 룰은 모두 소문자 와일드카드 패턴(`image_path == "c:\\users\\*"`, `reg_key_path == "*\\services\\*"`)을 원본 필드에 바로 비교했고, R5는 `lower(image)`를 `in()`으로 비교해 와일드카드를 쓰지 않습니다. 하루치 ModuleLoad 이벤트 2,695건에서 `image_path == "c:\\users\\*"`는 0건이었고, 값의 대소문자에 맞춘 `image_path == "C:\\Users\\*"`와 `lower(image_path) == "c:\\users\\*"`는 모두 3건이었습니다. 역슬래시가 없는 `cmd_line == "*bypass*"`도 실제 값이 `-ExecutionPolicy Bypass`라 0건이었고, `contains(lower(cmd_line), "bypass")`는 45건이었습니다. 즉 이 SIEM에서는 와일드카드 비교가 대소문자를 구분했습니다. 쿼리 문서에는 와일드카드가 있으면 대소문자를 무시한다고 되어 있어, 문서와 실제 동작이 달랐습니다. R6는 사전 필터에서 사이드로딩·서비스 등록 후보가 모두 빠져 필수 단계를 채우지 못했고, R4도 조사용 이벤트를 하나도 만들지 못했습니다. 파이썬 실측기는 문서대로 대소문자를 무시하게 구현했기 때문에 CSV 검증에서는 이 차이가 드러나지 않았습니다. v5에서는 와일드카드 앞에 항상 `lower()`를 두고, 경로 접두·포함은 `indexof()`, 부분 문자열은 `contains()`로 바꿨습니다. 수정한 R4 조회 쿼리는 BAS 두 차례 실행분의 인코딩 PowerShell을 모두 잡았고(43건), 실시간 룰의 티켓 발행은 BAS를 다시 실행해 확인할 예정입니다.
+v4 룰을 SIEM에 등록했을 때 티켓은 R5에서만 발행됐고 R1·R2·R6에서는 발행되지 않았습니다(R3·R4는 설계상 미발행). 세 룰은 모두 소문자 와일드카드 패턴(`image_path == "c:\\users\\*"`, `reg_key_path == "*\\services\\*"`)을 원본 필드에 바로 비교했고, R5는 `lower(image)`를 `in()`으로 비교해 와일드카드를 쓰지 않습니다. 하루치 ModuleLoad 이벤트 2,695건에서 `image_path == "c:\\users\\*"`는 0건이었고, 값의 대소문자에 맞춘 `image_path == "C:\\Users\\*"`와 `lower(image_path) == "c:\\users\\*"`는 모두 3건이었습니다. 역슬래시가 없는 `cmd_line == "*bypass*"`도 실제 값이 `-ExecutionPolicy Bypass`라 0건이었고, `contains(lower(cmd_line), "bypass")`는 45건이었습니다. 즉 이 SIEM에서는 와일드카드 비교가 대소문자를 구분했습니다. 쿼리 문서에는 와일드카드가 있으면 대소문자를 무시한다고 되어 있어, 문서와 실제 동작이 달랐습니다. R6는 사전 필터에서 사이드로딩·서비스 등록 후보가 모두 빠져 필수 단계를 채우지 못했고, R4도 조사용 이벤트를 하나도 만들지 못했습니다. 파이썬 실측기는 문서대로 대소문자를 무시하게 구현했기 때문에 CSV 검증에서는 이 차이가 드러나지 않았습니다. v5에서는 와일드카드 앞에 항상 `lower()`를 두고, 경로 접두·포함은 `indexof()`, 부분 문자열은 `contains()`로 바꿨습니다. 수정한 R4 조회 쿼리는 BAS 두 차례 실행분의 인코딩 PowerShell을 모두 잡았고(43건), 실시간 룰의 티켓 발행은 BAS를 다시 실행해 확인할 예정입니다. BAS를 다시 실행하자 R1 티켓이 발행됐지만, 메시지 값 뒤에 `$`가 글자로 남았고 프로세스 하나가 DLL을 여러 개 로드할 때 DLL마다 티켓이 나왔습니다. 문서는 `$필드$` 형식도 허용한다고 설명하지만 이 인스턴스에서는 `$필드`만 치환돼, 모든 룰의 메시지와 중복 기준 필드를 `$필드` 형식으로 바꾸고 R1 중복 기준에서 `file_path`를 뺐습니다. 같은 재실행에서 R5는 정찰 3종이 모두 실행됐는데도 탐지되지 않았습니다. EDR이 `whoami.exe`의 `proc_user_id`만 비워 보내 계정별 집계에서 2종으로 나뉘었기 때문입니다. `host_ip`는 모든 이벤트에 채워져 있어, R5는 계정 대신 `hostname`·`host_ip`로 묶고 계정은 결과의 `user_key` 목록으로만 남기도록 바꾸고 R5·R6 중복 기준을 `$hostname::$host_ip`로 맞췄습니다.
 
 ## 정리
 
