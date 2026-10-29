@@ -51,7 +51,7 @@ EDR 위협 이벤트는 14건이었고, 내용이 비어 있는 2건을 빼면 1
 
 ## 탐지 룰
 
-룰은 단계별 단일 룰 5개(R1~R5)와 이를 묶는 상관 룰 1개(R6)로 구성했습니다. BAS 에이전트 이름(Cheiron)이나 이번 샘플의 파일명은 조건에 넣지 않고 기법만 기준으로 삼았습니다. 위험 위치는 `C:\Users\Public`·`C:\PerfLogs` 하위 전체와, `C:\ProgramData`·`C:\Windows\Temp`·사용자 Temp·Roaming·Downloads의 바로 아래 파일로 좁혔습니다. 설치 프로그램이 Temp 하위 폴더에 압축을 풀고 DLL을 불러오는 정상 동작을 줄이려는 설계이며, 실제 설치 작업으로 오탐 감소를 측정하지는 않았습니다. 서비스 실행 파일(R2와 R6의 서비스 단계)만 예외로 AppData 전체 하위와 경로 중간의 `temp`·`downloads` 하위까지 넓게 봅니다. 서비스 실행 파일이 그런 곳에 있을 정상적인 이유가 드물다고 판단했기 때문입니다. 같은 판정 기준을 파이썬으로 구현해 CSV에서 적중을 실측했고, SIEM 인스턴스에서는 아직 실행하지 않았습니다.
+룰은 단계별 단일 룰 5개(R1~R5)와 이를 묶는 상관 룰 1개(R6)로 구성했습니다. BAS 에이전트 이름(Cheiron)이나 이번 샘플의 파일명은 조건에 넣지 않고 기법만 기준으로 삼았습니다. 위험 위치는 `C:\Users\Public`·`C:\PerfLogs` 하위 전체와, `C:\ProgramData`·`C:\Windows\Temp`·사용자 Temp·Roaming·Downloads의 바로 아래 파일로 좁혔습니다. 설치 프로그램이 Temp 하위 폴더에 압축을 풀고 DLL을 불러오는 정상 동작을 줄이려는 설계이며, 실제 설치 작업으로 오탐 감소를 측정하지는 않았습니다. 서비스 실행 파일(R2와 R6의 서비스 단계)만 예외로 AppData 전체 하위와 경로 중간의 `temp`·`downloads` 하위까지 넓게 봅니다. 서비스 실행 파일이 그런 곳에 있을 정상적인 이유가 드물다고 판단했기 때문입니다. 같은 판정 기준을 파이썬으로 구현해 CSV에서 적중을 실측했습니다. SIEM에 등록한 뒤 경로 조건이 동작하지 않는 문제를 찾아 v5에서 고쳤습니다(검증 결과 절 참고).
 
 ### 운영 방식
 
@@ -72,7 +72,7 @@ R6는 다음 실행까지 경보가 최대 약 10분 늦어질 수 있고(수집
 
 ### 쿼리 최적화
 
-v4에서는 스키마·이름·와일드카드 같은 값싼 조건을 앞의 `search`에 두고, 정규식과 `eval`은 뒤로 보냈습니다. 앞 단계에서 탈락한 행은 뒤로 전달되지 않습니다. 같은 식 안에서 단락 평가가 일어나는지는 문서로 확인하지 못했습니다. 가장 효과가 큰 것은 R6의 첫 `search`에서 단계 후보 이벤트만 남기는 사전 필터였습니다. 이번 CSV 기준으로 정규식·`eval`을 거치는 행이 10,065건에서 49건으로 줄었고, 탐지 결과는 v2와 같았습니다(5단계 적중). R4에는 `cmd_line == "*bypass*"`, R1·R3에는 경로 접두 와일드카드를 사전 필터로 넣었습니다. 이 조건들은 뒤의 최종 조건이 반드시 요구하는 것이고, 문서상 와일드카드 비교는 대소문자를 무시하므로 탐지 범위를 줄이지 않는 것으로 판단했습니다. 이번 CSV에서 결과가 같았다는 것 외에 SIEM 실행으로는 아직 확인하지 않았습니다.
+v4에서는 스키마·이름·와일드카드 같은 값싼 조건을 앞의 `search`에 두고, 정규식과 `eval`은 뒤로 보냈습니다. 앞 단계에서 탈락한 행은 뒤로 전달되지 않습니다. 같은 식 안에서 단락 평가가 일어나는지는 문서로 확인하지 못했습니다. 가장 효과가 큰 것은 R6의 첫 `search`에서 단계 후보 이벤트만 남기는 사전 필터였습니다. 이번 CSV 기준으로 정규식·`eval`을 거치는 행이 10,065건에서 49건으로 줄었고, 탐지 결과는 v2와 같았습니다(5단계 적중). R4에는 `cmd_line == "*bypass*"`, R1·R3에는 경로 접두 조건을 사전 필터로 넣었습니다. v4에서는 이 조건을 와일드카드로 썼지만 SIEM에서 동작하지 않아 v5에서 `indexof()` 비교로 바꿨습니다. 이 조건들은 뒤의 최종 조건이 반드시 요구하는 것이고 `lower()`로 바꾼 뒤 비교하므로 탐지 범위를 줄이지 않습니다.
 
 ### R1 위험 위치 DLL 사이드로딩 (실시간, 중요도 상, 티켓 발행)
 
@@ -80,13 +80,13 @@ v4에서는 스키마·이름·와일드카드 같은 값싼 조건을 앞의 `s
 table duration=1d EDR_GENIAN
 | search _schema == "genian-edr-module" and event_subtype == "ModuleLoad"
       and file_path == "*.dll"
-      and (image_path == "c:\\users\\*" or image_path == "c:\\programdata\\*"
-           or image_path == "c:\\windows\\temp\\*" or image_path == "c:\\perflogs\\*")
+      and (indexof(lower(image_path), "c:\\users\\") == 0 or indexof(lower(image_path), "c:\\programdata\\") == 0
+           or indexof(lower(image_path), "c:\\windows\\temp\\") == 0 or indexof(lower(image_path), "c:\\perflogs\\") == 0)
 | eval img_dir = lower(substr(image_path, 0, lastindexof(image_path, "\\"))),
        dll_dir = lower(substr(file_path, 0, lastindexof(file_path, "\\")))
 | search img_dir == dll_dir
       and (in(img_dir, "c:\\users\\public", "c:\\perflogs", "c:\\programdata", "c:\\windows\\temp")
-           or img_dir == "c:\\users\\public\\*" or img_dir == "c:\\perflogs\\*"
+           or indexof(img_dir, "c:\\users\\public\\") == 0 or indexof(img_dir, "c:\\perflogs\\") == 0
            or match(img_dir, "^c:\\\\users\\\\[^\\\\]+\\\\(?:appdata\\\\local\\\\temp|appdata\\\\roaming|downloads)$"))
 ```
 
@@ -95,7 +95,7 @@ table duration=1d EDR_GENIAN
 ```
 table duration=1d EDR_GENIAN
 | search _schema == "genian-edr-reg" and event_subtype == "RegSetValue"
-      and lower(reg_value_name) == "imagepath" and reg_key_path == "*\\services\\*"
+      and lower(reg_value_name) == "imagepath" and indexof(lower(reg_key_path), "\\services\\") >= 0
 | search match(lower(reg_key_path), "^(?:hklm|hkey_local_machine|\\\\registry\\\\machine)\\\\system\\\\(?:currentcontrolset|controlset[0-9]{3})\\\\services\\\\[^\\\\]+$")
 | eval svc_bin = lower(nvl(valueof(groups(reg_value, "^\\s*\"([^\"]+)\""), 0),
                            valueof(groups(reg_value, "(?i)^\\s*([^\"\\r\\n]+?\\.exe)(?:\\s|$)"), 0))),
@@ -103,7 +103,7 @@ table duration=1d EDR_GENIAN
 | search svc_bin == "*.exe" and svc_sep >= 0
 | eval svc_dir = substr(svc_bin, 0, svc_sep)
 | search in(svc_dir, "c:\\users\\public", "c:\\perflogs", "c:\\programdata")
-      or svc_dir == "c:\\users\\public\\*" or svc_dir == "c:\\perflogs\\*"
+      or indexof(svc_dir, "c:\\users\\public\\") == 0 or indexof(svc_dir, "c:\\perflogs\\") == 0
       or match(svc_dir, "^c:\\\\users\\\\[^\\\\]+\\\\appdata(?:\\\\|$)")
       or match(svc_dir, "(^|\\\\)(temp|downloads)(\\\\|$)")
 ```
@@ -114,10 +114,10 @@ table duration=1d EDR_GENIAN
 table duration=1d EDR_GENIAN
 | search _schema == "genian-edr-process" and event_subtype == "ProcessStart"
       and image_path == "*.exe"
-      and (image_path == "c:\\users\\public\\*" or image_path == "c:\\perflogs\\*" or image_path == "c:\\programdata\\*")
+      and (indexof(lower(image_path), "c:\\users\\public\\") == 0 or indexof(lower(image_path), "c:\\perflogs\\") == 0 or indexof(lower(image_path), "c:\\programdata\\") == 0)
 | eval img_dir = lower(substr(image_path, 0, lastindexof(image_path, "\\")))
 | search in(img_dir, "c:\\users\\public", "c:\\perflogs", "c:\\programdata")
-      or img_dir == "c:\\users\\public\\*" or img_dir == "c:\\perflogs\\*"
+      or indexof(img_dir, "c:\\users\\public\\") == 0 or indexof(img_dir, "c:\\perflogs\\") == 0
 ```
 
 ### R4 인코딩 명령 + 실행정책 우회 PowerShell (실시간, 중요도 중, 티켓 미발행)
@@ -159,10 +159,10 @@ table from=$("from") to=$("to") EDR_GENIAN
 # 첫 search 에서 단계 후보 이벤트만 남겨(파일 생성 등 대량 이벤트 제외) 뒤의 eval·정규식 처리량을 줄입니다.
 table from=$("from") to=$("to") EDR_GENIAN
 | search (_schema == "genian-edr-module" and event_subtype == "ModuleLoad" and file_path == "*.dll"
-          and (image_path == "c:\\users\\*" or image_path == "c:\\programdata\\*"
-               or image_path == "c:\\windows\\temp\\*" or image_path == "c:\\perflogs\\*"))
+          and (indexof(lower(image_path), "c:\\users\\") == 0 or indexof(lower(image_path), "c:\\programdata\\") == 0
+               or indexof(lower(image_path), "c:\\windows\\temp\\") == 0 or indexof(lower(image_path), "c:\\perflogs\\") == 0))
       or (_schema == "genian-edr-reg" and event_subtype == "RegSetValue"
-          and lower(reg_value_name) == "imagepath" and reg_key_path == "*\\services\\*")
+          and lower(reg_value_name) == "imagepath" and indexof(lower(reg_key_path), "\\services\\") >= 0)
       or (_schema == "genian-edr-process" and event_subtype == "ProcessStart"
           and ((in(lower(image), "powershell.exe", "pwsh.exe") and cmd_line == "*bypass*")
                or in(lower(image), "whoami.exe", "ipconfig.exe", "systeminfo.exe", "net.exe", "nltest.exe", "tasklist.exe",
@@ -176,10 +176,10 @@ table from=$("from") to=$("to") EDR_GENIAN
 | eval img_dir = if(img_sep >= 0, lower(substr(image_path, 0, img_sep)), null),
        f_dir = if(file_sep >= 0, lower(substr(file_path, 0, file_sep)), null)
 | eval img_risk = in(img_dir, "c:\\users\\public", "c:\\perflogs", "c:\\programdata", "c:\\windows\\temp")
-          or img_dir == "c:\\users\\public\\*" or img_dir == "c:\\perflogs\\*"
+          or indexof(img_dir, "c:\\users\\public\\") == 0 or indexof(img_dir, "c:\\perflogs\\") == 0
           or match(img_dir, "^c:\\\\users\\\\[^\\\\]+\\\\(?:appdata\\\\local\\\\temp|appdata\\\\roaming|downloads)$"),
        file_risk = in(f_dir, "c:\\users\\public", "c:\\perflogs", "c:\\programdata", "c:\\windows\\temp")
-          or f_dir == "c:\\users\\public\\*" or f_dir == "c:\\perflogs\\*"
+          or indexof(f_dir, "c:\\users\\public\\") == 0 or indexof(f_dir, "c:\\perflogs\\") == 0
           or match(f_dir, "^c:\\\\users\\\\[^\\\\]+\\\\(?:appdata\\\\local\\\\temp|appdata\\\\roaming|downloads)$")
 | eval svc_bin = if(_schema == "genian-edr-reg",
                     lower(nvl(valueof(groups(reg_value, "^\\s*\"([^\"]+)\""), 0),
@@ -187,7 +187,7 @@ table from=$("from") to=$("to") EDR_GENIAN
 | eval svc_sep = lastindexof(svc_bin, "\\")
 | eval svc_dir = if(svc_sep >= 0, substr(svc_bin, 0, svc_sep), null)
 | eval svc_risk = in(svc_dir, "c:\\users\\public", "c:\\perflogs", "c:\\programdata")
-          or svc_dir == "c:\\users\\public\\*" or svc_dir == "c:\\perflogs\\*"
+          or indexof(svc_dir, "c:\\users\\public\\") == 0 or indexof(svc_dir, "c:\\perflogs\\") == 0
           or match(svc_dir, "^c:\\\\users\\\\[^\\\\]+\\\\appdata(?:\\\\|$)")
           or match(svc_dir, "(^|\\\\)(temp|downloads)(\\\\|$)")
 | eval stage = case(
@@ -243,8 +243,10 @@ GPT 수정안을 다시 실측하자 새 오탐이 하나 생겼습니다. 정�
 
 R6의 단계는 서로 독립된 증거가 아닐 수 있습니다. 이번 로그에서도 같은 인코딩 PowerShell이 `enc_powershell`과 `cleanup` 두 단계를 함께 채웠고, 최종 집계는 hostname만으로 묶으므로 다른 사용자·작업의 행위가 합쳐질 수 있습니다. 같은 판정 기준이라도 파이썬 실측기는 이벤트 시각마다 창을 여는 이동 창이고, SIEM 배치는 CRON 시점마다 과거 창을 조회합니다. 따라서 경계 동작까지 같지는 않습니다.
 
+v4 룰을 SIEM에 등록했을 때 티켓은 R5에서만 발행됐고 R1·R2·R6에서는 발행되지 않았습니다(R3·R4는 설계상 미발행). 세 룰은 모두 역슬래시 바로 뒤에 `*`가 오는 경로 와일드카드(`image_path == "c:\\users\\*"`, `reg_key_path == "*\\services\\*"`)를 썼고, R5에는 경로 조건이 없습니다. 하루치 ModuleLoad 이벤트 2,695건에 두 조건을 따로 적용해 보니 와일드카드는 0건, `indexof(lower(image_path), "c:\\users\\") == 0`은 3건이었습니다. 경로 값은 CSV와 같은 `C:\Users\Public\fsguidll.exe` 형식으로 저장돼 있었습니다(08:50·12:43 두 차례 실행분). 문자열 이스케이프를 거친 뒤 남은 `\*`가 와일드카드 단계에서 리터럴 `*`로 다시 해석된 것으로 보입니다. 이 동작은 문서에 나와 있지 않습니다. R6는 사전 필터에서 사이드로딩·서비스 등록 후보가 모두 빠져 필수 단계를 채우지 못했습니다. 파이썬 실측기는 이 해석 차이를 재현하지 않으므로 CSV 검증에서는 드러나지 않았습니다. v5에서는 이런 형태의 조건을 모두 `indexof()` 접두·포함 비교로 바꿨습니다. 수정한 룰의 티켓 발행은 BAS를 다시 실행해 확인할 예정입니다.
+
 ## 정리
 
-이번 로그에서 확인된 핵심은 두 가지입니다. 첫째, PlugX식 DLL 사이드로딩(`fsguidll.exe` → `fslapi.dll`)은 EDR ModuleLoad 로그에 그대로 남았지만 EDR 위협 탐지로는 올라오지 않았습니다. 같은 폴더 로드와 위험 위치 조건으로 이 이벤트를 후보로 뽑을 수 있었고, 이 방식으로 SIEM에서 보완할 수 있다고 봅니다. 둘째, 단일 행위만으로는 정상 관리 작업과 구분이 어려워, 사이드로딩·서비스 등록을 축으로 단계를 묶는 상관 룰을 두었습니다. 이것이 실제로 오탐을 줄이는지는 운영 로그로 단일 룰과 비교해 확인해야 합니다. 검증 범위는 BAS 로컬 단말 1대, 21분 로그이며, SIEM 실행과 전사 7일 백테스트는 남아 있습니다.
+이번 로그에서 확인된 핵심은 두 가지입니다. 첫째, PlugX식 DLL 사이드로딩(`fsguidll.exe` → `fslapi.dll`)은 EDR ModuleLoad 로그에 그대로 남았지만 EDR 위협 탐지로는 올라오지 않았습니다. 같은 폴더 로드와 위험 위치 조건으로 이 이벤트를 후보로 뽑을 수 있었고, 이 방식으로 SIEM에서 보완할 수 있다고 봅니다. 둘째, 단일 행위만으로는 정상 관리 작업과 구분이 어려워, 사이드로딩·서비스 등록을 축으로 단계를 묶는 상관 룰을 두었습니다. 이것이 실제로 오탐을 줄이는지는 운영 로그로 단일 룰과 비교해 확인해야 합니다. 검증 범위는 BAS 로컬 단말 1대, 21분 로그입니다. SIEM에 등록한 뒤 CSV 실측기로는 드러나지 않던 경로 와일드카드 해석 차이를 찾아 고쳤습니다. 수정본의 티켓 발행 확인과 전사 7일 백테스트는 남아 있습니다.
 
 다음에는 인코딩 PowerShell의 base64를 쿼리 안에서 디코딩해 `Resolve-DnsName -Type TXT` 같은 내용 기반 탐지가 가능한지, DNS 서버 로그와 연결해 TXT 조회 자체를 잡을 수 있는지 확인합니다.
